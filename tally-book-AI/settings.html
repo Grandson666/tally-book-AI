@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设置与财务分析</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 引入 Chart.js 用于图表 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <style>
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px; /* 限制图表最大宽度 */
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px; /* 基础高度 */
+            max-height: 400px; /* 最大高度 */
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px; /* 中等屏幕以上调整高度 */
+            }
+        }
+        /* 自定义消息框和确认框的样式 */
+        .message-box-overlay, .confirm-box-overlay {
+            transition: opacity 0.3s ease-in-out;
+        }
+        .message-box-content, .confirm-box-content {
+            transition: transform 0.3s ease-in-out;
+        }
+        /* 表格样式 */
+        .insights-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            border-radius: 0.5rem; /* Rounded corners for the table */
+            overflow: hidden; /* Ensures rounded corners apply to borders */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Subtle shadow */
+        }
+        .insights-table th, .insights-table td {
+            border: 1px solid #e2e8f0; /* gray-200 */
+            padding: 0.75rem;
+            text-align: left;
+            vertical-align: top;
+        }
+        .insights-table th {
+            background-color: #f1f5f9; /* slate-100, slightly darker than gray-50 for header */
+            font-weight: 600;
+            color: #475569; /* gray-600 */
+        }
+        .insights-table td {
+            background-color: #ffffff;
+            color: #334155; /* gray-700 */
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+    <div class="max-w-4xl mx-auto p-4 md:p-6">
+        <!-- 头部信息 -->
+        <header class="mb-8 flex items-center justify-between">
+            <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-gray-800">设置与财务分析</h1>
+            <a href="index.html" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out text-sm">
+                <i class="fa fa-arrow-left mr-1"></i> 返回记账本
+            </a>
+        </header>
+
+        <!-- 每月支出上限设置 -->
+        <div class="bg-white rounded-lg shadow-md p-5 mb-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">月度支出上限设置</h2>
+            <form id="limitForm" class="space-y-4">
+                <div>
+                    <label for="monthlyLimitInput" class="block text-sm font-medium text-gray-700 mb-1">每月支出上限 (¥)</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">¥</span>
+                        <input type="number" step="0.01" id="monthlyLimitInput" class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="例如：2000.00">
+                    </div>
+                </div>
+                <div class="flex gap-3">
+                    <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out">
+                        <i class="fa fa-save mr-2"></i> 保存设置
+                    </button>
+                    <button type="button" id="clearLimitButton" class="flex-1 bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out">
+                        <i class="fa fa-times-circle mr-2"></i> 清除上限
+                    </button>
+                </div>
+            </form>
+
+            <div class="mt-6 p-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-md">
+                <p class="text-sm">当前设置的每月支出上限为：<span class="font-bold" id="currentLimitDisplay">未设置</span></p>
+            </div>
+        </div>
+
+        <!-- 支出分类分析图表 -->
+        <div class="bg-white rounded-lg shadow-md p-5 mb-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">支出分类分析</h2>
+            <p class="text-sm text-gray-500 mb-4">此条形图展示了您在不同支出类别上的花费，帮助您快速识别主要开销。</p>
+            <div class="chart-container h-96">
+                 <canvas id="categoryExpenseChart"></canvas>
+            </div>
+        </div>
+
+        <!-- LLM 财务洞察 -->
+        <div class="bg-white rounded-lg shadow-md p-5 mb-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">✨ 财务洞察</h2>
+            <p class="text-sm text-gray-500 mb-4">点击下方按钮，让 AI 为您分析消费习惯，并提供个性化建议。</p>
+            <button id="getInsightsBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition flex items-center justify-center">
+                <i class="fa fa-magic mr-2"></i> 获取财务洞察
+            </button>
+            <div id="insightsOutput" class="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200 text-gray-800 hidden">
+                <h3 class="text-lg font-semibold text-gray-700 mb-4 text-center">消费习惯分析报告</h3>
+                <p class="text-gray-500 text-center" id="insightsLoading">加载中，请稍候...</p>
+                <div id="insightsContent" class=""></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Message Box -->
+    <div id="message-box-overlay" class="message-box-overlay fixed top-5 left-1/2 -translate-x-1/2 p-4 rounded-md shadow-lg z-50 text-white hidden opacity-0">
+        <div id="message-box-content" class="message-box-content"></div>
+    </div>
+
+    <!-- Custom Confirm Box -->
+    <div id="confirm-box-overlay" class="confirm-box-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden opacity-0">
+        <div id="confirm-box-content" class="confirm-box-content bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center transform scale-95">
+            <p id="confirm-message" class="text-lg font-semibold mb-4 text-gray-800"></p>
+            <div class="flex justify-center gap-4">
+                <button id="confirm-yes" class="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out">
+                    是
+                </button>
+                <button id="confirm-no" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out">
+                    否
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Custom message box and confirm box (general functions, used by all pages)
+        function showMessageBox(message, type = 'info') {
+            const box = document.getElementById('message-box-overlay');
+            const content = document.getElementById('message-box-content');
+
+            content.textContent = message;
+            box.className = `message-box-overlay fixed top-5 left-1/2 -translate-x-1/2 p-4 rounded-md shadow-lg z-50 text-white`;
+            
+            if (type === 'success') box.classList.add('bg-green-500');
+            else if (type === 'warning') box.classList.add('bg-yellow-500');
+            else if (type === 'error') box.classList.add('bg-red-500');
+            else box.classList.add('bg-blue-500');
+
+            box.classList.remove('hidden');
+            void box.offsetWidth; // Trigger reflow
+            box.classList.remove('opacity-0');
+
+            setTimeout(() => {
+                box.classList.add('opacity-0');
+                setTimeout(() => {
+                    box.classList.add('hidden');
+                    box.className = 'message-box-overlay fixed top-5 left-1/2 -translate-x-1/2 p-4 rounded-md shadow-lg z-50 text-white hidden opacity-0'; // Reset classes
+                }, 300);
+            }, 3000);
+        }
+
+        function showConfirmBox(message, onConfirm) {
+            const overlay = document.getElementById('confirm-box-overlay');
+            const confirmMessageEl = document.getElementById('confirm-message');
+            const confirmYesBtn = document.getElementById('confirm-yes');
+            const confirmNoBtn = document.getElementById('confirm-no');
+
+            confirmMessageEl.textContent = message;
+            
+            overlay.classList.remove('hidden');
+            void overlay.offsetWidth; // Trigger reflow
+            overlay.classList.remove('opacity-0');
+            overlay.querySelector('.confirm-box-content').classList.remove('scale-95');
+
+            const handleConfirm = () => {
+                onConfirm();
+                overlay.classList.add('opacity-0');
+                overlay.querySelector('.confirm-box-content').classList.add('scale-95');
+                setTimeout(() => {
+                    overlay.classList.add('hidden');
+                }, 300);
+                confirmYesBtn.removeEventListener('click', handleConfirm);
+                confirmNoBtn.removeEventListener('click', handleCancel);
+            };
+
+            const handleCancel = () => {
+                overlay.classList.add('opacity-0');
+                overlay.querySelector('.confirm-box-content').classList.add('scale-95');
+                setTimeout(() => {
+                    overlay.classList.add('hidden');
+                }, 300);
+                confirmYesBtn.removeEventListener('click', handleConfirm);
+                confirmNoBtn.removeEventListener('click', handleCancel);
+            };
+
+            confirmYesBtn.addEventListener('click', handleConfirm);
+            confirmNoBtn.addEventListener('click', handleCancel);
+        }
+
+        const monthlyLimitInput = document.getElementById('monthlyLimitInput');
+        const limitForm = document.getElementById('limitForm');
+        const currentLimitDisplay = document.getElementById('currentLimitDisplay');
+        const clearLimitButton = document.getElementById('clearLimitButton');
+
+        // New: LLM and chart related DOM elements
+        const categoryExpenseChartCtx = document.getElementById('categoryExpenseChart').getContext('2d');
+        let categoryExpenseChart;
+        const getInsightsBtn = document.getElementById('getInsightsBtn');
+        const insightsOutput = document.getElementById('insightsOutput');
+        const insightsLoading = document.getElementById('insightsLoading');
+        const insightsContent = document.getElementById('insightsContent');
+
+        // Load transaction data from localStorage (using the same key as index.html)
+        let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+
+        // Load and display current limit
+        function loadMonthlyLimit() {
+            const limit = localStorage.getItem('monthlyLimit');
+            if (limit !== null) {
+                monthlyLimitInput.value = parseFloat(limit).toFixed(2);
+                currentLimitDisplay.textContent = `¥${parseFloat(limit).toFixed(2)}`;
+            } else {
+                monthlyLimitInput.value = ''; // Clear input field
+                currentLimitDisplay.textContent = '未设置';
+            }
+        }
+
+        // Save limit
+        limitForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newLimit = parseFloat(monthlyLimitInput.value);
+            if (isNaN(newLimit) || newLimit <= 0) {
+                showMessageBox('请输入一个有效的正数作为支出上限！', 'warning');
+                return;
+            }
+            localStorage.setItem('monthlyLimit', newLimit.toFixed(2));
+            loadMonthlyLimit();
+            showMessageBox('每月支出上限已保存！', 'success');
+        });
+
+        // Clear limit
+        clearLimitButton.addEventListener('click', () => {
+            showConfirmBox('确定要清除每月支出上限吗？', () => {
+                localStorage.removeItem('monthlyLimit');
+                loadMonthlyLimit();
+                showMessageBox('每月支出上限已清除！', 'success');
+            });
+        });
+
+        // Initialize expense category chart
+        function initCategoryExpenseChart() {
+            categoryExpenseChart = new Chart(categoryExpenseChartCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '支出',
+                        data: [],
+                        backgroundColor: '#ef4444', // Red tone
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    indexAxis: 'y', // Horizontal bar chart
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false // Do not display legend
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ¥${context.raw.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '¥' + value;
+                                }
+                            }
+                        }
+                    },
+                    y: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update expense category chart data
+        function updateCategoryExpenseChart() {
+            if (!categoryExpenseChart) return;
+
+            const expenseByCategory = {};
+            transactions.filter(t => t.amount < 0).forEach(t => {
+                expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + Math.abs(t.amount);
+            });
+
+            // Sort by amount from high to low
+            const sortedCategories = Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]);
+
+            categoryExpenseChart.data.labels = sortedCategories.map(c => c[0]);
+            categoryExpenseChart.data.datasets[0].data = sortedCategories.map(c => c[1]);
+            categoryExpenseChart.update();
+        }
+
+        // Get financial insights (LLM call logic)
+        getInsightsBtn.addEventListener('click', async () => {
+            insightsOutput.classList.remove('hidden');
+            insightsLoading.classList.remove('hidden');
+            insightsContent.innerHTML = ''; // Clear previous content
+            getInsightsBtn.disabled = true;
+            getInsightsBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i> 生成中...';
+
+            try {
+                const totalIncome = transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0);
+                const totalExpense = Math.abs(transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + t.amount, 0));
+
+                const monthlyData = {};
+                transactions.forEach(t => {
+                    const monthKey = t.date.substring(0, 7);
+                    if (!monthlyData[monthKey]) monthlyData[monthKey] = { income: 0, expense: 0 };
+                    if (t.amount > 0) monthlyData[monthKey].income += t.amount;
+                    else monthlyData[monthKey].expense += Math.abs(t.amount);
+                });
+                // Format monthly summary for table cell
+                const monthlySummaryFormatted = Object.keys(monthlyData).sort().map(m =>
+                    `${m}: 收入 ¥${monthlyData[m].income.toFixed(2)}, 支出 ¥${monthlyData[m].expense.toFixed(2)}`
+                ).join('<br>'); // Use <br> for new lines in table cell
+
+                const expenseByCategory = {};
+                transactions.filter(t => t.amount < 0).forEach(t => {
+                    expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + Math.abs(t.amount);
+                });
+                // Format top categories for table cell
+                const topCategoriesFormatted = Object.entries(expenseByCategory)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 5) // Take top 5
+                    .map(([category, amount]) => `${category}: ¥${amount.toFixed(2)}`)
+                    .join('<br>'); // Use <br> for new lines in table cell
+
+                // Modified prompt to explicitly ask for ONLY the Markdown table
+                const prompt = `请根据以下财务数据，提供一份简洁的消费习惯分析报告。报告应包含以下几点：
+1.  **总体概览**: 您的总收入和总支出情况。
+2.  **月度趋势**: 指出收入和支出的主要月度变化或模式。
+3.  **主要支出类别**: 列出您花费最多的几个类别。
+4.  **一个可行的改进建议**: 基于您的数据，提供一个具体的财务管理建议。
+请根据上述要求，直接生成一个表格，并且生成内容详细的改进建议，如果某项内容包含多行，请在表格单元格内使用HTML换行符<br>，不要包含任何额外的文字或标题，只需表格内容。
+
+财务数据摘要:
+总收入: ¥${totalIncome.toFixed(2)}
+总支出: ¥${totalExpense.toFixed(2)}
+月度数据:
+${monthlySummaryFormatted || '暂无月度数据。'}
+支出分类分布:
+${topCategoriesFormatted || '暂无支出分类数据。'}
+`;
+
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = ""; // 用户添加自己的 Google Gemini API Key
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                // Check HTTP response status
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('API request failed:', response.status, response.statusText, errorData);
+                    throw new Error(`API request failed: ${response.status} - ${errorData.error ? errorData.error.message : response.statusText}`);
+                }
+
+                const result = await response.json();
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    let text = result.candidates[0].content.parts[0].text;
+                    // Remove all occurrences of "```html" and "```"
+                    text = text.replaceAll('```html', '');
+                    text = text.replaceAll('```', '');
+                    // Remove all occurrences of "**" and "*"
+                    text = text.replaceAll('**', '');
+                    text = text.replaceAll('*', '');
+                    // Trim any remaining leading/trailing whitespace
+                    text = text.trim();
+                    // Directly set the HTML, assuming the model returns Markdown table format
+                    // Add the insights-table class to the generated table for styling
+                    insightsContent.innerHTML = text.replace('<table>', '<table class="insights-table">'); 
+                } else {
+                    insightsContent.textContent = '未能获取洞察。API响应结构异常。';
+                    console.error('API response structure abnormal:', result);
+                }
+            } catch (error) {
+                console.error('Error getting insights:', error);
+                insightsContent.textContent = `获取洞察时发生错误。请检查浏览器控制台了解详情。`;
+                showMessageBox('获取洞察时发生错误。', 'error');
+            } finally {
+                insightsLoading.classList.add('hidden');
+                getInsightsBtn.disabled = false;
+                getInsightsBtn.innerHTML = '<i class="fa fa-magic mr-2"></i> 获取财务洞察';
+            }
+        });
+
+        // Initialize load
+        loadMonthlyLimit();
+        initCategoryExpenseChart(); // Initialize chart
+        updateCategoryExpenseChart(); // Update chart data
+    </script>
+</body>
+</html>

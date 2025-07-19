@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简易记账本</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 引入 Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <style>
+        /* 自定义滚动条样式 */
+        #transactionsList::-webkit-scrollbar {
+            width: 8px;
+        }
+        #transactionsList::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #transactionsList::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        #transactionsList::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+    <div class="max-w-4xl mx-auto p-4 md:p-6">
+        <!-- 头部信息 -->
+        <header class="mb-8">
+            <div class="flex items-center justify-between mb-4">
+                <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-gray-800">个人记账本</h1>
+                <div class="flex gap-2">
+                    <!-- 跳转到存钱计划页面的按钮 -->
+                    <a href="saving_plans.html" class="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out text-sm">
+                        <i class="fa fa-money mr-1"></i> 存钱计划
+                    </a>
+                    <!-- 跳转到语音记账页面的按钮 -->
+                    <a href="speech_to_text.html" class="bg-purple-500 hover:bg-purple-600 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out text-sm">
+                        <i class="fa fa-microphone mr-1"></i> 语音记账
+                    </a>
+                    <!-- 跳转到设置页面的按钮 -->
+                    <a href="settings.html" class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out text-sm">
+                        <i class="fa fa-cog mr-1"></i> 设置
+                    </a>
+                </div>
+            </div>
+
+            <div class="mt-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div class="bg-white rounded-lg shadow-md p-4">
+                    <p class="text-sm text-gray-500">当前余额</p>
+                    <p class="text-2xl font-bold text-gray-800" id="balance">¥0.00</p>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 w-full md:w-auto">
+                    <div class="bg-green-50 rounded-lg p-3 text-center">
+                        <p class="text-xs text-gray-500">总收入</p>
+                        <p class="text-lg font-bold text-green-600" id="income">¥0.00</p>
+                    </div>
+                    <div class="bg-red-50 rounded-lg p-3 text-center">
+                        <p class="text-xs text-gray-500">总支出</p>
+                        <p class="text-lg font-bold text-red-600" id="expense">¥0.00</p>
+                    </div>
+                    <div class="bg-blue-50 rounded-lg p-3 text-center">
+                        <p class="text-xs text-gray-500">交易笔数</p>
+                        <p class="text-lg font-bold text-blue-600" id="count">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 月度支出上限警告区域 -->
+            <div id="monthlyLimitWarning" class="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-md hidden" role="alert">
+                <p class="font-bold">警告：本月支出已超出预算！</p>
+                <p>当前支出：<span id="currentMonthExpenseDisplay" class="font-semibold">¥0.00</span> / 上限：<span id="monthlyLimitDisplay" class="font-semibold">¥0.00</span></p>
+            </div>
+        </header>
+
+        <!-- 图表区域 - 添加折叠功能 -->
+        <div class="bg-white rounded-lg shadow-md p-5 mb-6">
+            <div class="flex items-center justify-between mb-4 cursor-pointer" id="toggleCharts">
+                <h2 class="text-lg font-semibold text-gray-700">收支统计</h2>
+                <i class="fa fa-chevron-up text-gray-500 transition-transform duration-300" id="chartToggleIcon"></i>
+            </div>
+            <div id="chartContent" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 饼图：收支比例 -->
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h3 class="text-base font-medium mb-3 text-gray-700">收支比例</h3>
+                    <div class="h-64">
+                        <canvas id="incomeExpenseChart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- 柱状图：月度趋势 -->
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h3 class="text-base font-medium mb-3 text-gray-700">月度趋势</h3>
+                    <div class="h-64">
+                        <canvas id="monthlyTrendChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- 左侧：添加交易表单 -->
+            <section class="lg:col-span-1 bg-white rounded-lg shadow-md p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-gray-700">添加记录</h2>
+                    <div class="flex gap-2">
+                        <!-- 收入和支出切换按钮 -->
+                        <button type="button" id="modeIncomeBtn" class="px-3 py-1 rounded-md text-sm font-medium transition duration-150 ease-in-out bg-green-500 text-white">收入</button>
+                        <button type="button" id="modeExpenseBtn" class="px-3 py-1 rounded-md text-sm font-medium transition duration-150 ease-in-out bg-gray-200 text-gray-700">支出</button>
+                    </div>
+                </div>
+                <form id="transactionForm" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">描述</label>
+                        <input type="text" id="description" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="例如：午餐">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">金额</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">¥</span>
+                            <input type="number" step="0.01" id="amount" class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="0.00">
+                        </div>
+                    </div>
+                    
+                    <!-- 隐藏的类型单选按钮，由JS控制选中状态 -->
+                    <div class="hidden">
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="type" value="income" class="form-radio text-green-600 focus:ring-green-500 h-4 w-4" id="radioIncome">
+                            <span class="ml-2 text-sm text-gray-700">收入</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="type" value="expense" class="form-radio text-red-600 focus:ring-red-500 h-4 w-4" id="radioExpense">
+                            <span class="ml-2 text-sm text-gray-700">支出</span>
+                        </label>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">分类</label>
+                        <select id="category" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <!-- 选项将由JavaScript动态加载 -->
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">日期</label>
+                        <input type="date" id="date" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    </div>
+                    
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out">
+                        添加记录
+                    </button>
+                </form>
+            </section>
+
+            <!-- 右侧：交易记录列表 -->
+            <section class="lg:col-span-2">
+                <div class="bg-white rounded-lg shadow-md p-5 mb-5">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 flex-wrap">
+                        <div class="flex items-center gap-2">
+                            <h2 class="text-lg font-semibold text-gray-700 whitespace-nowrap">交易记录</h2>
+                            <!-- 新增的一键删除按钮 -->
+                            <button id="deleteAllFilteredBtn" class="bg-red-500 hover:bg-red-600 text-white font-medium py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out whitespace-nowrap">
+                                <i class="fa fa-trash-o mr-1"></i>一键删除
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto">
+                            <label for="transactionDateFilter" class="text-sm text-gray-600 whitespace-nowrap">日期:</label>
+                            <input type="date" id="transactionDateFilter" class="flex-grow px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <button id="viewAllTransactionsBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-1 px-3 rounded-md text-sm transition duration-150 ease-in-out whitespace-nowrap">
+                                全部
+                            </button>
+                        </div>
+                        
+                        <div class="flex gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto">
+                            <input type="text" id="search" placeholder="搜索描述..." class="flex-grow px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <select id="filter" class="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <option value="all">全部</option>
+                                <option value="income">收入</option>
+                                <option value="expense">支出</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div id="transactionsList" class="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+                        <!-- 交易记录将通过 JavaScript 动态添加 -->
+                        <div class="text-center text-gray-500 py-8">
+                            <i class="fa fa-book text-3xl mb-2 opacity-30"></i>
+                            <p>暂无交易记录</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // 自定义消息框和确认框 (通用函数，被所有页面使用)
+        function showMessageBox(message, type = 'info') {
+            const box = document.createElement('div');
+            box.className = `fixed top-5 left-1/2 -translate-x-1/2 p-4 rounded-md shadow-lg z-50 text-white
+                             ${type === 'success' ? 'bg-green-500' :
+                               type === 'warning' ? 'bg-yellow-500' :
+                               type === 'error' ? 'bg-red-500' :
+                               'bg-blue-500'}`;
+            box.textContent = message;
+            document.body.appendChild(box);
+            setTimeout(() => {
+                box.remove();
+            }, 3000); // 3秒后自动消失
+        }
+
+        function showConfirmBox(message, onConfirm) {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            
+            const modal = document.createElement('div');
+            modal.className = 'bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center';
+            modal.innerHTML = `
+                <p class="text-lg font-semibold mb-4 text-gray-800">${message}</p>
+                <div class="flex justify-center gap-4">
+                    <button id="confirmYes" class="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out">
+                        是
+                    </button>
+                    <button id="confirmNo" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out">
+                        否
+                    </button>
+                </div>
+            `;
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+
+            document.getElementById('confirmYes').addEventListener('click', () => {
+                onConfirm();
+                overlay.remove();
+            });
+            document.getElementById('confirmNo').addEventListener('click', () => {
+                overlay.remove();
+            });
+        }
+
+        // 初始化交易数据
+        let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+        
+        // DOM 元素
+        const descriptionInput = document.getElementById('description');
+        const amountInput = document.getElementById('amount');
+        const radioIncome = document.getElementById('radioIncome');
+        const radioExpense = document.getElementById('radioExpense');
+        const categorySelect = document.getElementById('category');
+        const dateInput = document.getElementById('date');
+
+        const transactionForm = document.getElementById('transactionForm');
+        const transactionsList = document.getElementById('transactionsList');
+        const balanceElement = document.getElementById('balance');
+        const incomeElement = document.getElementById('income');
+        const expenseElement = document.getElementById('expense');
+        const countElement = document.getElementById('count');
+        const searchInput = document.getElementById('search');
+        const filterSelect = document.getElementById('filter');
+
+        // 新增：日期筛选相关DOM元素
+        const transactionDateFilter = document.getElementById('transactionDateFilter');
+        const viewAllTransactionsBtn = document.getElementById('viewAllTransactionsBtn');
+        // 新增：一键删除按钮
+        const deleteAllFilteredBtn = document.getElementById('deleteAllFilteredBtn');
+        
+        // 月度支出警告相关的DOM元素
+        const monthlyLimitWarning = document.getElementById('monthlyLimitWarning');
+        const currentMonthExpenseDisplay = document.getElementById('currentMonthExpenseDisplay');
+        const monthlyLimitDisplay = document.getElementById('monthlyLimitDisplay');
+
+        // 图表折叠相关的DOM元素
+        const toggleChartsButton = document.getElementById('toggleCharts');
+        const chartContent = document.getElementById('chartContent');
+        const chartToggleIcon = document.getElementById('chartToggleIcon');
+        let chartsExpanded = true; // 初始状态为展开
+
+        // 新增：收入/支出模式切换按钮
+        const modeIncomeBtn = document.getElementById('modeIncomeBtn');
+        const modeExpenseBtn = document.getElementById('modeExpenseBtn');
+
+        // 定义分类选项
+        const incomeCategories = ['工资', '奖金', '理财收入', '兼职收入', '礼金', '其他收入'];
+        const expenseCategories = ['餐饮', '购物', '交通', '娱乐', '医疗', '住房', '通讯', '学习', '人情往来', '其他支出'];
+
+        let currentFormMode = 'income'; // 默认显示收入模式
+        let currentFilteredDate = new Date().toISOString().split('T')[0]; // 默认筛选今天日期
+
+        // 设置默认日期为今天
+        dateInput.valueAsDate = new Date();
+        transactionDateFilter.value = currentFilteredDate; // 初始化日期筛选器为今天
+        
+        // 图表实例
+        let incomeExpenseChart;
+        let monthlyTrendChart;
+        
+        // 初始化图表
+        function initCharts() {
+            // 收支饼图
+            const incomeExpenseCtx = document.getElementById('incomeExpenseChart').getContext('2d');
+            incomeExpenseChart = new Chart(incomeExpenseCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['收入', '支出'],
+                    datasets: [{
+                        data: [0, 0],
+                        backgroundColor: ['#10B981', '#EF4444'],
+                        borderWidth: 0,
+                        cutout: '70%'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = total === 0 ? 0 : Math.round((value / total) * 100); // 避免除以零
+                                    return `${context.label}: ¥${value.toFixed(2)} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    },
+                    animation: {
+                        animateScale: true,
+                        animateRotate: true
+                    }
+                }
+            });
+            
+            // 月度趋势图
+            const monthlyTrendCtx = document.getElementById('monthlyTrendChart').getContext('2d');
+            monthlyTrendChart = new Chart(monthlyTrendCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: '收入',
+                            data: [],
+                            backgroundColor: '#10B981',
+                            borderRadius: 4,
+                            barPercentage: 0.6,
+                        },
+                        {
+                            label: '支出',
+                            data: [],
+                            backgroundColor: '#EF4444',
+                            borderRadius: 4,
+                            barPercentage: 0.6,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '¥' + value;
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ¥${context.raw.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 更新图表数据
+        function updateCharts() {
+            if (!incomeExpenseChart || !monthlyTrendChart) return;
+            
+            // 计算收入和支出总额
+            const income = transactions
+                .filter(t => t.amount > 0)
+                .reduce((total, t) => total + t.amount, 0);
+            
+            const expense = Math.abs(transactions
+                .filter(t => t.amount < 0)
+                .reduce((total, t) => total + t.amount, 0));
+            
+            // 更新收支饼图
+            incomeExpenseChart.data.datasets[0].data = [income, expense];
+            incomeExpenseChart.update();
+            
+            // 计算月度数据
+            const monthlyData = {};
+            
+            transactions.forEach(transaction => {
+                const date = new Date(transaction.date);
+                // 获取年份和月份，格式为 YYYY-MM
+                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                
+                if (!monthlyData[monthKey]) {
+                    monthlyData[monthKey] = { income: 0, expense: 0 };
+                }
+                
+                if (transaction.amount > 0) {
+                    monthlyData[monthKey].income += transaction.amount;
+                } else {
+                    monthlyData[monthKey].expense += Math.abs(transaction.amount);
+                }
+            });
+            
+            // 排序月份（按时间顺序）
+            const sortedMonths = Object.keys(monthlyData).sort();
+            const incomeData = sortedMonths.map(month => monthlyData[month].income);
+            const expenseData = sortedMonths.map(month => monthlyData[month].expense);
+            const monthLabels = sortedMonths.map(month => {
+                const [year, monthNum] = month.split('-');
+                return `${year}年${monthNum}月`;
+            });
+            
+            // 更新月度趋势图
+            monthlyTrendChart.data.labels = monthLabels;
+            monthlyTrendChart.data.datasets[0].data = incomeData;
+            monthlyTrendChart.data.datasets[1].data = expenseData;
+            monthlyTrendChart.update();
+        }
+        
+        // 获取当前筛选后的交易记录
+        function getFilteredTransactions() {
+            let filteredTransactions = transactions;
+
+            // 1. 根据日期筛选
+            if (currentFilteredDate !== 'all') {
+                filteredTransactions = filteredTransactions.filter(t => t.date === currentFilteredDate);
+            }
+
+            // 2. 根据搜索词和类型筛选
+            const searchTerm = searchInput.value.toLowerCase();
+            const filterType = filterSelect.value;
+            
+            const finalFiltered = filteredTransactions.filter(transaction => {
+                const matchesSearch = transaction.description.toLowerCase().includes(searchTerm);
+                const matchesFilter = 
+                    filterType === 'all' || 
+                    (filterType === 'income' && transaction.amount > 0) || 
+                    (filterType === 'expense' && transaction.amount < 0);
+                
+                return matchesSearch && matchesFilter;
+            });
+            return finalFiltered;
+        }
+
+        // 渲染交易列表 (现在根据 currentFilteredDate 和搜索/过滤条件渲染)
+        function renderTransactions() {
+            const finalFiltered = getFilteredTransactions();
+
+            if (finalFiltered.length === 0) {
+                transactionsList.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fa fa-book text-3xl mb-2 opacity-30"></i>
+                        <p>暂无交易记录</p>
+                        ${currentFilteredDate !== 'all' ? `<p class="text-sm mt-2">在 ${currentFilteredDate} 没有记录。</p>` : ''}
+                    </div>
+                `;
+                return;
+            }
+            
+            transactionsList.innerHTML = '';
+            finalFiltered.forEach(transaction => {
+                const sign = transaction.amount < 0 ? '-' : '+';
+                const amount = Math.abs(transaction.amount).toFixed(2);
+                const bgClass = transaction.amount < 0 ? 'bg-red-50' : 'bg-green-50';
+                const textClass = transaction.amount < 0 ? 'text-red-700' : 'text-green-700';
+                const icon = transaction.amount < 0 ? 'fa-minus-circle' : 'fa-plus-circle';
+                
+                const transactionElement = document.createElement('div');
+                transactionElement.className = `${bgClass} rounded-lg p-3 flex items-center justify-between hover:shadow-md transition-shadow duration-150`;
+                transactionElement.innerHTML = `
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center ${textClass} mr-3">
+                            <i class="fa ${icon}"></i>
+                        </div>
+                        <div>
+                            <p class="font-medium text-gray-800">${transaction.description}</p>
+                            <p class="text-sm text-gray-500">${transaction.category} · ${transaction.date}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-semibold ${textClass}">${sign}¥${amount}</p>
+                        <button class="delete-btn text-xs text-gray-400 hover:text-red-500 mt-1" data-id="${transaction.id}">
+                            <i class="fa fa-trash-o"></i> 删除
+                        </button>
+                    </div>
+                `;
+                transactionsList.appendChild(transactionElement);
+            });
+            
+            // 添加删除事件监听
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    // 确保点击的是按钮本身或其内部的图标
+                    const id = parseInt(e.target.closest('.delete-btn').dataset.id);
+                    deleteTransaction(id);
+                });
+            });
+        }
+        
+        // 更新统计信息 (保持全局统计，不受日期筛选影响)
+        function updateStats() {
+            const income = transactions
+                .filter(t => t.amount > 0)
+                .reduce((total, t) => total + t.amount, 0);
+            
+            const expense = Math.abs(transactions
+                .filter(t => t.amount < 0)
+                .reduce((total, t) => total + t.amount, 0));
+            
+            const balance = income - expense;
+            
+            balanceElement.textContent = `¥${balance.toFixed(2)}`;
+            incomeElement.textContent = `¥${income.toFixed(2)}`;
+            expenseElement.textContent = `¥${expense.toFixed(2)}`;
+            countElement.textContent = transactions.length;
+            
+            // 设置余额颜色
+            if (balance > 0) {
+                balanceElement.className = 'text-2xl font-bold text-green-600';
+            } else if (balance < 0) {
+                balanceElement.className = 'text-2xl font-bold text-red-600';
+            } else {
+                balanceElement.className = 'text-2xl font-bold text-gray-800';
+            }
+            
+            // 月度支出上限警告逻辑
+            const monthlyLimit = parseFloat(localStorage.getItem('monthlyLimit')); // 从localStorage获取上限
+            const now = new Date();
+            // 获取当前年份和月份，格式为 YYYY-MM
+            const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+            // 计算本月支出总额
+            const currentMonthExpense = Math.abs(transactions
+                .filter(t => {
+                    const transactionDate = new Date(t.date);
+                    const transactionYearMonth = `${transactionDate.getFullYear()}-${String(transactionDate.getMonth() + 1).padStart(2, '0')}`;
+                    // 筛选出本月支出
+                    return t.amount < 0 && transactionYearMonth === currentYearMonth;
+                })
+                .reduce((total, t) => total + t.amount, 0));
+
+            // 判断是否超出上限并显示警告
+            if (!isNaN(monthlyLimit) && monthlyLimit > 0 && currentMonthExpense > monthlyLimit) {
+                monthlyLimitWarning.classList.remove('hidden'); // 显示警告
+                currentMonthExpenseDisplay.textContent = `¥${currentMonthExpense.toFixed(2)}`;
+                monthlyLimitDisplay.textContent = `¥${monthlyLimit.toFixed(2)}`;
+            } else {
+                monthlyLimitWarning.classList.add('hidden'); // 隐藏警告
+            }
+            
+            // 更新图表
+            updateCharts();
+        }
+        
+        // 添加新交易
+        function addTransaction(e) {
+            e.preventDefault();
+            
+            const description = descriptionInput.value.trim();
+            const amount = parseFloat(amountInput.value);
+            const type = currentFormMode; 
+            const category = categorySelect.value;
+            const date = dateInput.value;
+            
+            if (!description || isNaN(amount) || amount <= 0 || !date) {
+                showMessageBox('请填写完整信息，并确保金额为正数！', 'warning');
+                return;
+            }
+            
+            const transaction = {
+                id: Date.now(),
+                description,
+                amount: type === 'income' ? amount : -amount,
+                category,
+                date
+            };
+            
+            transactions.unshift(transaction);
+            saveTransactions();
+            
+            // 如果添加的记录是当前筛选日期或“全部”，则重新渲染列表
+            if (currentFilteredDate === 'all' || transaction.date === currentFilteredDate) {
+                renderTransactions();
+            }
+            updateStats();
+            
+            // 重置表单
+            transactionForm.reset();
+            dateInput.valueAsDate = new Date();
+            setFormMode(currentFormMode); 
+        }
+        
+        // 删除单条交易
+        function deleteTransaction(id) {
+            showConfirmBox('确定要删除这条记录吗？', () => {
+                transactions = transactions.filter(transaction => transaction.id !== id);
+                saveTransactions();
+                renderTransactions(); // 删除后重新渲染当前视图
+                updateStats();
+                showMessageBox('记录已删除！', 'success');
+            });
+        }
+
+        // 删除当前筛选条件下的所有交易记录
+        function deleteAllFilteredTransactions() {
+            const filteredTransactions = getFilteredTransactions();
+            if (filteredTransactions.length === 0) {
+                showMessageBox('没有可删除的记录。', 'info');
+                return;
+            }
+
+            let confirmMessage = '';
+            const filterType = filterSelect.value;
+            const searchTerm = searchInput.value.toLowerCase();
+
+            if (currentFilteredDate === 'all' && filterType === 'all' && searchTerm === '') {
+                confirmMessage = '确定要删除所有交易记录吗？此操作不可撤销！';
+            } else {
+                let criteria = [];
+                if (currentFilteredDate !== 'all') {
+                    criteria.push(`日期为 ${currentFilteredDate}`);
+                }
+                if (filterType === 'income') {
+                    criteria.push('类型为收入');
+                } else if (filterType === 'expense') {
+                    criteria.push('类型为支出');
+                }
+                if (searchTerm !== '') {
+                    criteria.push(`描述包含 "${searchTerm}"`);
+                }
+                
+                confirmMessage = `确定要删除所有${criteria.join('且')}的交易记录吗？此操作不可撤销！`;
+            }
+
+            showConfirmBox(confirmMessage, () => {
+                // 获取当前筛选后的交易ID列表
+                const idsToDelete = new Set(filteredTransactions.map(t => t.id));
+                // 从总交易列表中移除这些ID对应的交易
+                transactions = transactions.filter(transaction => !idsToDelete.has(transaction.id));
+                saveTransactions();
+                renderTransactions(); // 删除后重新渲染当前视图
+                updateStats();
+                showMessageBox('已删除当前筛选条件下的所有记录！', 'success');
+            });
+        }
+        
+        // 保存交易到本地存储
+        function saveTransactions() {
+            localStorage.setItem('transactions', JSON.stringify(transactions));
+        }
+        
+        // 搜索和过滤 (现在直接调用 renderTransactions，因为它已经包含了所有筛选逻辑)
+        function filterTransactions() {
+            renderTransactions();
+        }
+
+        // 图表折叠/展开功能
+        toggleChartsButton.addEventListener('click', () => {
+            chartsExpanded = !chartsExpanded;
+            if (chartsExpanded) {
+                chartContent.classList.remove('hidden');
+                chartToggleIcon.classList.remove('fa-chevron-down');
+                chartToggleIcon.classList.add('fa-chevron-up');
+            } else {
+                chartContent.classList.add('hidden');
+                chartToggleIcon.classList.remove('fa-chevron-up');
+                chartToggleIcon.classList.add('fa-chevron-down');
+            }
+        });
+
+        // 设置表单模式（收入/支出）
+        function setFormMode(mode) {
+            currentFormMode = mode;
+            if (mode === 'income') {
+                radioIncome.checked = true;
+                modeIncomeBtn.classList.add('bg-green-500', 'text-white');
+                modeIncomeBtn.classList.remove('bg-gray-200', 'text-gray-700');
+                modeExpenseBtn.classList.add('bg-gray-200', 'text-gray-700');
+                modeExpenseBtn.classList.remove('bg-red-500', 'text-white');
+                
+                categorySelect.innerHTML = incomeCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+            } else { // mode === 'expense'
+                radioExpense.checked = true;
+                modeExpenseBtn.classList.add('bg-red-500', 'text-white');
+                modeExpenseBtn.classList.remove('bg-gray-200', 'text-gray-700');
+                modeIncomeBtn.classList.add('bg-gray-200', 'text-gray-700');
+                modeIncomeBtn.classList.remove('bg-green-500', 'text-white');
+
+                categorySelect.innerHTML = expenseCategories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
+            }
+        }
+
+        // 事件监听
+        transactionForm.addEventListener('submit', addTransaction);
+        searchInput.addEventListener('input', filterTransactions);
+        filterSelect.addEventListener('change', filterTransactions);
+
+        // 新增：模式切换按钮的事件监听
+        modeIncomeBtn.addEventListener('click', () => setFormMode('income'));
+        modeExpenseBtn.addEventListener('click', () => setFormMode('expense'));
+
+        // 新增：日期筛选事件监听
+        transactionDateFilter.addEventListener('change', () => {
+            currentFilteredDate = transactionDateFilter.value;
+            renderTransactions();
+        });
+
+        viewAllTransactionsBtn.addEventListener('click', () => {
+            currentFilteredDate = 'all'; // 特殊值，表示显示所有日期
+            transactionDateFilter.value = ''; // 清空日期输入框
+            renderTransactions();
+        });
+
+        // 新增：一键删除按钮的事件监听
+        deleteAllFilteredBtn.addEventListener('click', deleteAllFilteredTransactions);
+        
+        // 初始化
+        initCharts();
+        renderTransactions(); // 初始渲染时会根据 currentFilteredDate 显示
+        updateStats(); // 确保在页面加载时就更新统计和检查上限
+        setFormMode('income'); // 页面加载时默认设置为收入模式
+    </script>
+</body>
+</html>

@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>存钱计划</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- 引入 Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <style>
+        /* 自定义滚动条样式 */
+        #detailDepositsList::-webkit-scrollbar {
+            width: 8px;
+        }
+        #detailDepositsList::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        #detailDepositsList::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        #detailDepositsList::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+    <div class="max-w-4xl mx-auto p-4 md:p-6">
+        <!-- 头部信息 -->
+        <header class="mb-8 flex items-center justify-between">
+            <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold text-gray-800">存钱计划</h1>
+            <a href="index.html" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out text-sm">
+                <i class="fa fa-arrow-left mr-1"></i> 返回记账本
+            </a>
+        </header>
+
+        <!-- 添加存钱计划表单 -->
+        <section class="bg-white rounded-lg shadow-md p-5 mb-6">
+            <h2 class="text-lg font-semibold mb-4 text-gray-700">添加新计划</h2>
+            <form id="addPlanForm" class="space-y-4">
+                <div>
+                    <label for="planName" class="block text-sm font-medium text-gray-700 mb-1">计划名称</label>
+                    <input type="text" id="planName" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="例如：买新手机">
+                </div>
+                <div>
+                    <label for="targetAmount" class="block text-sm font-medium text-gray-700 mb-1">目标金额 (¥)</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">¥</span>
+                        <input type="number" step="0.01" id="targetAmount" class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent" placeholder="0.00">
+                    </div>
+                </div>
+                <div>
+                    <label for="targetDate" class="block text-sm font-medium text-gray-700 mb-1">目标日期 (可选)</label>
+                    <input type="date" id="targetDate" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                </div>
+                <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out">
+                    <i class="fa fa-plus-circle mr-2"></i> 创建计划
+                </button>
+            </form>
+        </section>
+
+        <!-- 存钱计划列表 -->
+        <section class="bg-white rounded-lg shadow-md p-5 mb-6">
+            <h2 class="text-lg font-semibold mb-4 text-gray-700">进行中</h2>
+            <div id="inProgressPlansList" class="space-y-3">
+                <!-- 进行中的计划将在此处动态加载 -->
+                <div class="text-center text-gray-500 py-8">
+                    <i class="fa fa-spinner fa-spin text-3xl mb-2 opacity-30"></i>
+                    <p>暂无进行中的计划</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-lg shadow-md p-5 mb-6">
+            <h2 class="text-lg font-semibold mb-4 text-gray-700">已完成</h2>
+            <div id="completedPlansList" class="space-y-3">
+                <!-- 已完成的计划将在此处动态加载 -->
+                <div class="text-center text-gray-500 py-8">
+                    <i class="fa fa-check-circle text-3xl mb-2 opacity-30"></i>
+                    <p>暂无已完成的计划</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- 计划详情模态框 -->
+    <div id="planDetailModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-md w-full relative">
+            <button class="absolute top-3 right-3 text-gray-500 hover:text-gray-700 text-xl" id="closeDetailModal">
+                <i class="fa fa-times-circle"></i>
+            </button>
+            <h2 class="text-xl font-bold text-gray-800 mb-4" id="detailPlanName"></h2>
+            <p class="text-gray-600 mb-2">目标金额: <span class="font-semibold text-green-600" id="detailTargetAmount"></span></p>
+            <p class="text-gray-600 mb-2">当前金额: <span class="font-semibold text-blue-600" id="detailCurrentAmount"></span></p>
+            <p class="text-gray-600 mb-4">进度: <span class="font-semibold" id="detailProgress"></span></p>
+            <div class="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+                <div class="bg-green-600 h-2.5 rounded-full" id="detailProgressBar" style="width: 0%"></div>
+            </div>
+
+            <!-- 存入趋势图 -->
+            <h3 class="text-md font-semibold text-gray-700 mb-3">存入趋势</h3>
+            <div class="h-48 mb-4">
+                <canvas id="depositTrendChart"></canvas>
+            </div>
+
+            <h3 class="text-md font-semibold text-gray-700 mb-3">存入记录</h3>
+            <div id="detailDepositsList" class="max-h-40 overflow-y-auto border border-gray-200 rounded-md p-2 space-y-1 text-sm mb-4">
+                <!-- 存入记录将在此处动态加载 -->
+                <p class="text-gray-500 text-center">暂无存入记录</p>
+            </div>
+
+            <h3 class="text-md font-semibold text-gray-700 mb-3">添加存入</h3>
+            <form id="addDepositForm" class="flex gap-2">
+                <div class="relative flex-grow">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">¥</span>
+                    <input type="number" step="0.01" id="depositAmountInput" class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="存入金额">
+                </div>
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out">
+                    存入
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // 自定义消息框和确认框 (通用函数，被所有页面使用)
+        function showMessageBox(message, type = 'info') {
+            const box = document.createElement('div');
+            box.className = `fixed top-5 left-1/2 -translate-x-1/2 p-4 rounded-md shadow-lg z-50 text-white
+                             ${type === 'success' ? 'bg-green-500' :
+                               type === 'warning' ? 'bg-yellow-500' :
+                               type === 'error' ? 'bg-red-500' :
+                               'bg-blue-500'}`;
+            box.textContent = message;
+            document.body.appendChild(box);
+            setTimeout(() => {
+                box.remove();
+            }, 3000); // 3秒后自动消失
+        }
+
+        function showConfirmBox(message, onConfirm) {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            
+            const modal = document.createElement('div');
+            modal.className = 'bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center';
+            modal.innerHTML = `
+                <p class="text-lg font-semibold mb-4 text-gray-800">${message}</p>
+                <div class="flex justify-center gap-4">
+                    <button id="confirmYes" class="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out">
+                        是
+                    </button>
+                    <button id="confirmNo" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-4 rounded-md transition duration-150 ease-in-out">
+                        否
+                    </button>
+                </div>
+            `;
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+
+            document.getElementById('confirmYes').addEventListener('click', () => {
+                onConfirm();
+                overlay.remove();
+            });
+            document.getElementById('confirmNo').addEventListener('click', () => {
+                overlay.remove();
+            });
+        }
+
+        // 存钱计划数据
+        let savingPlans = JSON.parse(localStorage.getItem('savingPlans')) || [];
+
+        // DOM 元素
+        const addPlanForm = document.getElementById('addPlanForm');
+        const inProgressPlansList = document.getElementById('inProgressPlansList');
+        const completedPlansList = document.getElementById('completedPlansList');
+
+        const planDetailModal = document.getElementById('planDetailModal');
+        const closeDetailModalBtn = document.getElementById('closeDetailModal');
+        const detailPlanName = document.getElementById('detailPlanName');
+        const detailTargetAmount = document.getElementById('detailTargetAmount');
+        const detailCurrentAmount = document.getElementById('detailCurrentAmount');
+        const detailProgress = document.getElementById('detailProgress');
+        const detailProgressBar = document.getElementById('detailProgressBar');
+        const detailDepositsList = document.getElementById('detailDepositsList');
+        const addDepositForm = document.getElementById('addDepositForm');
+        const depositAmountInput = document.getElementById('depositAmountInput');
+        const depositTrendChartCanvas = document.getElementById('depositTrendChart');
+
+        let currentViewingPlanId = null; // 当前正在查看的计划ID
+        let depositTrendChart; // Chart.js 实例
+
+        // 初始化存入趋势图
+        function initDepositTrendChart(plan) {
+            if (depositTrendChart) {
+                depositTrendChart.destroy(); // 销毁旧图表实例
+            }
+
+            const cumulativeLabels = [];
+            const cumulativeData = [];
+            let currentCumulativeAmount = 0;
+
+            // 添加初始点
+            cumulativeLabels.push('开始');
+            cumulativeData.push(0);
+
+            // 按日期排序存入记录
+            const sortedDeposits = [...plan.deposits].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            sortedDeposits.forEach(deposit => {
+                currentCumulativeAmount += deposit.amount;
+                cumulativeLabels.push(deposit.date);
+                cumulativeData.push(currentCumulativeAmount);
+            });
+
+            // 目标金额线的数据：在所有标签点上都保持目标金额值
+            const targetLineData = cumulativeLabels.map(() => plan.targetAmount);
+
+            depositTrendChart = new Chart(depositTrendChartCanvas, {
+                type: 'line',
+                data: {
+                    labels: cumulativeLabels, // 使用累积存入的标签作为X轴
+                    datasets: [
+                        {
+                            label: '累积存入金额',
+                            data: cumulativeData,
+                            borderColor: '#22C55E', // 绿色
+                            backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                            fill: true,
+                            tension: 0.3, // 使线条更平滑
+                            pointRadius: 5,
+                            pointBackgroundColor: '#22C55E',
+                            pointBorderColor: '#fff',
+                            pointHoverRadius: 7,
+                            pointHoverBackgroundColor: '#22C55E',
+                            pointHoverBorderColor: '#fff'
+                        },
+                        {
+                            label: '目标金额',
+                            data: targetLineData, // 平坦的目标金额线
+                            borderColor: '#EF4444', // 红色
+                            borderDash: [5, 5], // 虚线
+                            fill: false,
+                            pointRadius: 0, // 不显示目标金额线上的点
+                            tension: 0 // 直线
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: '日期/事件'
+                            },
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: '金额 (¥)'
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return '¥' + value.toFixed(2);
+                                }
+                            },
+                            // 确保Y轴最大值包含目标金额和当前累积金额，并留有一定余量
+                            suggestedMax: Math.max(plan.targetAmount, currentCumulativeAmount) * 1.1 
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ¥${context.raw.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+
+        // 渲染存钱计划列表
+        function renderSavingPlans() {
+            inProgressPlansList.innerHTML = '';
+            completedPlansList.innerHTML = '';
+
+            if (savingPlans.length === 0) {
+                inProgressPlansList.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fa fa-spinner fa-spin text-3xl mb-2 opacity-30"></i>
+                        <p>暂无进行中的计划</p>
+                    </div>
+                `;
+                completedPlansList.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fa fa-check-circle text-3xl mb-2 opacity-30"></i>
+                        <p>暂无已完成的计划</p>
+                    </div>
+                `;
+                return;
+            }
+
+            savingPlans.forEach(plan => {
+                const progress = (plan.currentAmount / plan.targetAmount) * 100;
+                const progressColor = progress >= 100 ? 'bg-green-500' : 'bg-blue-500';
+                const textColor = progress >= 100 ? 'text-green-700' : 'text-blue-700';
+
+                const planElement = document.createElement('div');
+                planElement.className = `bg-gray-50 rounded-lg p-4 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3 hover:shadow-md transition-shadow duration-150`;
+                planElement.innerHTML = `
+                    <div class="flex-grow">
+                        <p class="font-semibold text-gray-800 text-lg">${plan.name}</p>
+                        <p class="text-sm text-gray-600">目标: ¥${plan.targetAmount.toFixed(2)}</p>
+                        <p class="text-sm text-gray-600">当前: <span class="${textColor}">¥${plan.currentAmount.toFixed(2)}</span></p>
+                        <div class="w-full bg-gray-200 rounded-full h-2 mt-2">
+                            <div class="${progressColor} h-2 rounded-full" style="width: ${Math.min(100, progress)}%"></div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">进度: ${progress.toFixed(1)}%</p>
+                    </div>
+                    <div class="flex flex-col md:flex-row gap-2 mt-3 md:mt-0">
+                        <button class="view-details-btn bg-blue-500 hover:bg-blue-600 text-white text-xs py-1 px-3 rounded-md" data-id="${plan.id}">
+                            <i class="fa fa-info-circle mr-1"></i> 详情
+                        </button>
+                        <button class="delete-plan-btn bg-red-500 hover:bg-red-600 text-white text-xs py-1 px-3 rounded-md" data-id="${plan.id}">
+                            <i class="fa fa-trash-o mr-1"></i> 删除
+                        </button>
+                    </div>
+                `;
+
+                if (progress >= 100) {
+                    completedPlansList.appendChild(planElement);
+                } else {
+                    inProgressPlansList.appendChild(planElement);
+                }
+            });
+
+            // 如果列表为空，显示提示
+            if (inProgressPlansList.children.length === 0) {
+                inProgressPlansList.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fa fa-spinner fa-spin text-3xl mb-2 opacity-30"></i>
+                        <p>暂无进行中的计划</p>
+                    </div>
+                `;
+            }
+            if (completedPlansList.children.length === 0) {
+                completedPlansList.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fa fa-check-circle text-3xl mb-2 opacity-30"></i>
+                        <p>暂无已完成的计划</p>
+                    </div>
+                `;
+            }
+
+            // 添加事件监听器
+            document.querySelectorAll('.view-details-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const id = parseInt(e.target.closest('.view-details-btn').dataset.id);
+                    viewPlanDetails(id);
+                });
+            });
+            document.querySelectorAll('.delete-plan-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const id = parseInt(e.target.closest('.delete-plan-btn').dataset.id);
+                    deleteSavingPlan(id);
+                });
+            });
+        }
+
+        // 保存计划到本地存储
+        function saveSavingPlans() {
+            localStorage.setItem('savingPlans', JSON.stringify(savingPlans));
+        }
+
+        // 添加新计划
+        addPlanForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const planName = document.getElementById('planName').value.trim();
+            const targetAmount = parseFloat(document.getElementById('targetAmount').value);
+            const targetDate = document.getElementById('targetDate').value;
+
+            if (!planName || isNaN(targetAmount) || targetAmount <= 0) {
+                showMessageBox('请填写有效的计划名称和目标金额！', 'warning');
+                return;
+            }
+
+            const newPlan = {
+                id: Date.now(),
+                name: planName,
+                targetAmount: targetAmount,
+                targetDate: targetDate,
+                currentAmount: 0,
+                deposits: []
+            };
+
+            savingPlans.push(newPlan);
+            saveSavingPlans();
+            renderSavingPlans();
+            addPlanForm.reset();
+            showMessageBox('存钱计划已创建！', 'success');
+        });
+
+        // 删除计划
+        function deleteSavingPlan(id) {
+            showConfirmBox('确定要删除此存钱计划吗？', () => {
+                savingPlans = savingPlans.filter(plan => plan.id !== id);
+                saveSavingPlans();
+                renderSavingPlans();
+                showMessageBox('存钱计划已删除！', 'success');
+            });
+        }
+
+        // 删除单笔存入记录
+        function deleteDeposit(planId, depositId) {
+            showConfirmBox('确定要删除这笔存入记录吗？', () => {
+                const planIndex = savingPlans.findIndex(p => p.id === planId);
+                if (planIndex !== -1) {
+                    const plan = savingPlans[planIndex];
+                    const originalDeposit = plan.deposits.find(d => d.depositId === depositId);
+
+                    if (originalDeposit) {
+                        plan.currentAmount -= originalDeposit.amount; // 从当前金额中扣除
+                        plan.deposits = plan.deposits.filter(d => d.depositId !== depositId); // 移除该笔存入记录
+
+                        saveSavingPlans();
+                        showMessageBox('存入记录已删除！', 'success');
+                        viewPlanDetails(planId); // 刷新详情模态框和图表
+                        renderSavingPlans(); // 刷新主列表以更新进度条
+                    } else {
+                        showMessageBox('未找到该存入记录！', 'error');
+                    }
+                } else {
+                    showMessageBox('未找到对应的存钱计划！', 'error');
+                }
+            });
+        }
+
+        // 查看计划详情
+        function viewPlanDetails(id) {
+            const plan = savingPlans.find(p => p.id === id);
+            if (!plan) {
+                showMessageBox('未找到该计划！', 'error');
+                return;
+            }
+
+            currentViewingPlanId = id; // 记录当前查看的计划ID
+
+            detailPlanName.textContent = plan.name;
+            detailTargetAmount.textContent = `¥${plan.targetAmount.toFixed(2)}`;
+            detailCurrentAmount.textContent = `¥${plan.currentAmount.toFixed(2)}`;
+
+            const progress = (plan.currentAmount / plan.targetAmount) * 100;
+            detailProgress.textContent = `${progress.toFixed(1)}%`;
+            detailProgressBar.style.width = `${Math.min(100, progress)}%`;
+            detailProgressBar.className = `h-2.5 rounded-full ${progress >= 100 ? 'bg-green-600' : 'bg-blue-600'}`;
+
+            // 渲染存入记录
+            detailDepositsList.innerHTML = '';
+            if (plan.deposits.length === 0) {
+                detailDepositsList.innerHTML = '<p class="text-gray-500 text-center">暂无存入记录</p>';
+            } else {
+                plan.deposits.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(deposit => { // 按日期倒序
+                    const depositElement = document.createElement('div');
+                    depositElement.className = 'flex justify-between items-center text-gray-700';
+                    depositElement.innerHTML = `
+                        <span>${deposit.date}</span>
+                        <div class="flex items-center gap-2">
+                            <span class="font-medium text-green-600">+¥${deposit.amount.toFixed(2)}</span>
+                            <button class="delete-deposit-btn text-xs text-gray-400 hover:text-red-500" data-deposit-id="${deposit.depositId}">
+                                <i class="fa fa-trash-o"></i> 删除
+                            </button>
+                        </div>
+                    `;
+                    detailDepositsList.appendChild(depositElement);
+                });
+                // 为新渲染的删除按钮添加事件监听器
+                document.querySelectorAll('.delete-deposit-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const depositId = parseInt(e.target.closest('.delete-deposit-btn').dataset.depositId);
+                        deleteDeposit(currentViewingPlanId, depositId); // 使用当前查看的计划ID
+                    });
+                });
+            }
+
+            // 初始化并更新存入趋势图
+            initDepositTrendChart(plan);
+
+            planDetailModal.classList.remove('hidden'); // 显示模态框
+        }
+
+        // 关闭计划详情模态框
+        closeDetailModalBtn.addEventListener('click', () => {
+            planDetailModal.classList.add('hidden');
+            currentViewingPlanId = null;
+            depositAmountInput.value = ''; // 清空存入金额输入框
+            if (depositTrendChart) {
+                depositTrendChart.destroy(); // 销毁图表实例以释放内存
+            }
+        });
+
+        // 添加存入
+        addDepositForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (currentViewingPlanId === null) return;
+
+            const depositAmount = parseFloat(depositAmountInput.value);
+            if (isNaN(depositAmount) || depositAmount <= 0) {
+                showMessageBox('请输入有效的存入金额！', 'warning');
+                return;
+            }
+
+            const planIndex = savingPlans.findIndex(p => p.id === currentViewingPlanId);
+            if (planIndex !== -1) {
+                const plan = savingPlans[planIndex];
+                plan.currentAmount += depositAmount;
+                plan.deposits.push({
+                    depositId: Date.now(),
+                    amount: depositAmount,
+                    date: new Date().toISOString().split('T')[0] // 当前日期 YYYY-MM-DD
+                });
+                saveSavingPlans();
+                showMessageBox('存入成功！', 'success');
+                viewPlanDetails(currentViewingPlanId); // 刷新详情，这将重新渲染图表
+                renderSavingPlans(); // 刷新列表以更新进度条和状态
+                depositAmountInput.value = ''; // 清空输入框
+            }
+        });
+
+        // 初始化加载
+        renderSavingPlans();
+    </script>
+</body>
+</html>
